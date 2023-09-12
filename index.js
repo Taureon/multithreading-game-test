@@ -72,16 +72,13 @@ function makeThreadArray(count, file, BuffArray, update) {
 
 //da engine loop
 async function main() {
-    while(true) {
-        let start = performance.now();
+    let start = performance.now();
 
-        await Promise.all(entityThreads.map(t => t.tick(entityBuffer, subBufferPerEntityThread)));
+    await Promise.all(entityThreads.map(t => t.tick(entityBuffer, subBufferPerEntityThread)));
 
-        await render();
+    await render();
 
-        //force 50 tps
-        while (performance.now() < start + 20) {}
-    }
+    setTimeout(main, 20);
 }
 
 ctx.fillStyle = 'black';
