@@ -1,12 +1,15 @@
 let struct = Object.fromEntries(["x", "y", "vel", "angle", "angVel", "wiggly"].map((x, i) => [x, i])),
-threads = 4,
+renderThreads = 16,
+entityThreads = 4,
 entitiesPerThread = 16,
 bytesPerProp = 4,
 
 structPropCount = Object.values(struct).length,
 allocPerEntity = structPropCount * bytesPerProp,
-subBufferPerThread = allocPerEntity * entitiesPerThread,
-entityBuffer = new ArrayBuffer(threads * subBufferPerThread),
+subBufferPerRenderThread = 512 * 512 * 4 / renderThreads,
+subBufferPerEntityThread = allocPerEntity * entitiesPerThread,
+
+entityBuffer = new ArrayBuffer(entityThreads * subBufferPerEntityThread),
 editableBuffer = new Float32Array(entityBuffer);
 
 // generate entities
@@ -26,57 +29,76 @@ for (let i = 0; i < editableBuffer.length; i += structPropCount) {
 }
 
 class Thread {
-    constructor (id) {
-        this.worker = new Worker('worker.js');
+    constructor (file, id, update, BuffArray) {
+        this.worker = new Worker(file);
         this.id = id;
-    }
-    update (start, buff) {
-        for (let i = 0; i < buff.length; i++) {
-            editableBuffer[start + i] = buff[i];
-        }
+        this.update = update;
+        this.BuffArray = BuffArray;
     }
     listen (start, Resolve) {
         this.worker.addEventListener("message", msg => {
-            this.update(start, new Float32Array(msg.data));
+            this.update(start, new this.BuffArray(msg.data));
             Resolve();
         }, {
             once: true
         })
     }
-    tick () {
-        let start = this.id * subBufferPerThread,
-            buff = entityBuffer.slice(start, start + subBufferPerThread);
+    tick (buffer, subBufferLength) {
+        let start = this.id * subBufferLength,
+            buff = buffer.slice(start, start + subBufferLength);
         this.worker.postMessage(buff, [buff]);
         return new Promise(Resolve => this.listen(start, Resolve));
     }
 }
 
 let canvas = document.getElementsByTagName('canvas')[0],
-    ctx = canvas.getContext('2d');
+    ctx = canvas.getContext('2d'),
+    imageData;
 
-function render() {
+async function render() {
+    imageData = ctx.getImageData(0, 0, 512, 512);
+    await Promise.all(renderThreads.map(t => t.tick(imageData.data.buffer, subBufferPerRenderThread)));
+    ctx.putImageData(imageData, 0, 0);
+
     ctx.fillStyle = 'white';
     for (let i = 0; i < editableBuffer.length; i += structPropCount) {
         ctx.fillRect(editableBuffer[i + struct.x] - 1, editableBuffer[i + struct.y] - 1, 2, 2);
     }
 }
 
+function makeThreadArray(count, file, BuffArray, update) {
+    return Array(count).fill().map((_, i) => new Thread(file, i, update, BuffArray));
+}
+
 //da engine loop
 async function main() {
-    ctx.fillStyle = 'black';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    threads = Array(threads).fill().map((_, i) => new Thread(i));
     while(true) {
         let start = performance.now();
 
-        await Promise.all(threads.map(t => t.tick()));
+        await Promise.all(entityThreads.map(t => t.tick(entityBuffer, subBufferPerEntityThread)));
 
-        render();
+        await render();
 
         //force 50 tps
         while (performance.now() < start + 20) {}
     }
 }
+
+ctx.fillStyle = 'black';
+ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+entityThreads = makeThreadArray(entityThreads, 'entityWorker.js', Float32Array,
+(start, buff) => {
+    for (let i = 0; i < buff.length; i++) {
+        editableBuffer[start + i] = buff[i];
+    }
+});
+
+renderThreads = makeThreadArray(renderThreads, 'renderWorker.js', Uint8ClampedArray,
+(start, buff) => {
+    for (let i = 0; i < buff.length; i++) {
+        imageData.data[start + i] = buff[i];
+    }
+});
 
 main();
