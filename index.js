@@ -1,7 +1,7 @@
 let struct = Object.fromEntries(["x", "y", "vel", "angle", "angVel", "wiggly"].map((x, i) => [x, i])),
 renderThreads = 16,
 entityThreads = 4,
-entitiesPerThread = 16,
+entitiesPerThread = 128,
 bytesPerProp = 4,
 
 structPropCount = Object.values(struct).length,
