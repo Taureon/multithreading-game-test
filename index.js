@@ -55,7 +55,12 @@ let canvas = document.getElementsByTagName('canvas')[0],
     ctx = canvas.getContext('2d'),
     imageData;
 
-async function render() {
+//da engine loop
+async function main() {
+    let start = performance.now();
+
+    await Promise.all(entityThreads.map(t => t.tick(entityBuffer, subBufferPerEntityThread)));
+
     imageData = ctx.getImageData(0, 0, 512, 512);
     await Promise.all(renderThreads.map(t => t.tick(imageData.data.buffer, subBufferPerRenderThread)));
     ctx.putImageData(imageData, 0, 0);
@@ -64,25 +69,16 @@ async function render() {
     for (let i = 0; i < editableBuffer.length; i += structPropCount) {
         ctx.fillRect(editableBuffer[i + struct.x] - 1, editableBuffer[i + struct.y] - 1, 2, 2);
     }
-}
-
-function makeThreadArray(count, file, BuffArray, update) {
-    return Array(count).fill().map((_, i) => new Thread(file, i, update, BuffArray));
-}
-
-//da engine loop
-async function main() {
-    let start = performance.now();
-
-    await Promise.all(entityThreads.map(t => t.tick(entityBuffer, subBufferPerEntityThread)));
-
-    await render();
 
     setTimeout(main, 20);
 }
 
 ctx.fillStyle = 'black';
 ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+function makeThreadArray(count, file, BuffArray, update) {
+    return Array(count).fill().map((_, i) => new Thread(file, i, update, BuffArray));
+}
 
 entityThreads = makeThreadArray(entityThreads, 'entityWorker.js', Float32Array,
 (start, buff) => {

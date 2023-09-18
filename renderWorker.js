@@ -4,7 +4,7 @@ self.onmessage = (msg) => {
 
     for (let i = 0; i < pixelData.length; i++) {
         if (pixelData[i]) {
-            pixelData[i]++;
+            pixelData[i]--;
         }
     }
 
